@@ -747,9 +747,15 @@ async function loadData(){
 }
 
 /* ============================================================
-   REALTIME — re-render on any change from any user
+   REALTIME — re-render on any change from any user.
+   Guard prevents double-subscription when onAuthStateChange
+   fires alongside the initial getSession() check.
 ============================================================ */
+let _realtimeReady = false;
+
 function setupRealtime(){
+  if(_realtimeReady) return;
+  _realtimeReady = true;
   db.channel('rd-tracker-live')
     .on('postgres_changes', { event:'*', schema:'public', table:'trial_batches' }, async () => {
       await loadData();
@@ -979,21 +985,24 @@ function insertQuickCode(code){
 }
 async function saveFollowup(){
   if(!currentFollowup){ closeModal('followupModal'); return; }
-  const comment = document.getElementById('fuComments').value;
-  const sel     = document.querySelector('.status-opt.sel');
-  const tag     = sel ? sel.dataset.tag : 'normal';
+  const comment  = document.getElementById('fuComments').value;
+  const sel      = document.querySelector('.status-opt.sel');
+  const tag      = sel ? sel.dataset.tag : 'normal';
+  const followId = currentFollowup.id;
 
-  const { error } = await supabase
+  closeModal('followupModal');
+  showToast('Saving…');
+
+  const { error } = await db
     .from('follow_ups')
     .update({
       completed_at: new Date().toISOString(),
       comments:     comment || null,
       status_tag:   tag === 'normal' ? null : tag,
     })
-    .eq('id', currentFollowup.id);
+    .eq('id', followId);
 
   if(error){ showToast('Save failed — ' + error.message); return; }
-  closeModal('followupModal');
   await loadData();
   renderFollowupsTable();
   renderDashboard();
@@ -1097,7 +1106,7 @@ document.getElementById('itemDetail').addEventListener('change', async e => {
   if(!input) return;
   const val       = parseInt(input.value, 10);
   const cropWeeks = (!isNaN(val) && val > 0) ? val : null;
-  const { error } = await supabase
+  const { error } = await db
     .from('trial_batches')
     .update({ actual_crop_time_weeks: cropWeeks })
     .eq('id', input.dataset.batchId);
