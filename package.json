@@ -1,0 +1,11 @@
+{
+  "name": "tpc-rd-trial-tracker",
+  "version": "1.0.0",
+  "description": "The Plant Company R&D Trial Tracker",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
