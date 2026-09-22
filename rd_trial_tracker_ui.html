@@ -554,7 +554,9 @@
 ============================================================ */
 const SUPABASE_URL = 'https://yskkqhllcmsnvaeomvqi.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_0AxNSplGe2GUQPzY49H3xA_jGx7yf3Y';
-const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { flowType: 'implicit' }
+});
 
 /* ============================================================
    AUTH
