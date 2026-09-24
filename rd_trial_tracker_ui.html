@@ -1,0 +1,1350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>R&D Trial Tracker</title>
+<!-- Supabase JS client -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!--
+  Fonts: Google Fonts for visual fidelity. System stacks below serve as fallbacks —
+  the UI works fully offline/in the greenhouse if this request fails.
+  TODO (pre-launch): self-host woff2 files alongside the HTML for guaranteed offline support.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F3F1E4;
+    --paper-raised:#FBFAF3;
+    --ink:#232A20;
+    --ink-soft:#5B6152;
+    --fern:#2F4A3E;
+    --fern-dark:#213631;
+    --moss:#6B7D52;
+    --moss-pale:#DCE3CC;
+    --line:#D9D5C3;
+
+    --overdue:#B5502D;
+    --overdue-bg:#F7E4DB;
+    --due:#B9821F;
+    --due-bg:#F7EBD3;
+    --ontrack:#3F7A4F;
+    --ontrack-bg:#DEEBDD;
+    --callout-color:#4F5F82;
+    --callout-bg:#DFE3EE;
+
+    --radius:10px;
+    --shadow:0 1px 2px rgba(35,42,32,.06), 0 4px 14px rgba(35,42,32,.06);
+    --font-display:'Fraunces', Georgia, 'Times New Roman', serif;
+    --font-body:'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono:'IBM Plex Mono', 'Courier New', Courier, monospace;
+  }
+
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.5;}
+  h1,h2,h3,h4{font-family:var(--font-display);font-weight:600;color:var(--fern-dark);margin:0 0 .3em;}
+  .mono{font-family:var(--font-mono);}
+  a{color:var(--fern);}
+  button{font-family:inherit;cursor:pointer;}
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible{
+    outline:2px solid var(--fern); outline-offset:2px;
+  }
+  @media (prefers-reduced-motion: reduce){ *{animation:none !important; transition:none !important;} }
+
+  /* ===== Ribbon ===== */
+  header.ribbon{
+    background:var(--fern-dark); color:#EFEEE2; padding:0 20px;
+    display:flex; align-items:center; gap:28px; height:64px;
+    position:sticky; top:0; z-index:50; box-shadow:0 2px 10px rgba(0,0,0,.15);
+  }
+  .brand{display:flex; align-items:center; gap:10px; font-family:var(--font-display); font-size:1.25rem; font-weight:700; color:#fff; white-space:nowrap;}
+  .brand .leaf{font-size:1.3rem;}
+  nav.tabs{display:flex; gap:4px; flex:1; overflow-x:auto;}
+  nav.tabs button{
+    background:none; border:none; color:#C9CFC0; font-size:.92rem; font-weight:600;
+    padding:10px 16px; border-radius:8px 8px 0 0; white-space:nowrap; letter-spacing:.02em;
+    border-bottom:3px solid transparent;
+  }
+  nav.tabs button:hover{ color:#fff; background:rgba(255,255,255,.06); }
+  nav.tabs button.active{ color:#fff; border-bottom-color:var(--due); }
+  .ribbon-user{margin-left:auto; font-size:.85rem; color:#C9CFC0; white-space:nowrap;}
+
+  main{max-width:1280px; margin:0 auto; padding:26px 20px 80px;}
+  .view{display:none;}
+  .view.active{display:block;}
+
+  /* ===== Cards / stat tiles ===== */
+  .stat-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-bottom:28px;}
+  .stat-card{background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius); padding:18px 20px; box-shadow:var(--shadow);}
+  .stat-card .num{font-family:var(--font-display); font-size:2.1rem; font-weight:700; color:var(--fern-dark); line-height:1;}
+  .stat-card .label{font-size:.82rem; color:var(--ink-soft); margin-top:6px; text-transform:uppercase; letter-spacing:.04em;}
+  .stat-card.warn .num{color:var(--overdue);}
+  .stat-card.due .num{color:var(--due);}
+
+  .panel{background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:22px; margin-bottom:22px;}
+  .panel-head{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; flex-wrap:wrap;}
+  .panel-head h2{margin:0; font-size:1.15rem;}
+
+  /* ===== Buttons ===== */
+  .btn{display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); background:#fff; color:var(--ink); font-weight:600; font-size:.86rem; padding:9px 16px; border-radius:8px;}
+  .btn:hover{ border-color:var(--moss); }
+  .btn-primary{ background:var(--fern); border-color:var(--fern); color:#fff; }
+  .btn-primary:hover{ background:var(--fern-dark); }
+  .btn-ghost{ background:transparent; border-color:transparent; color:var(--fern); }
+  .btn-sm{ padding:6px 12px; font-size:.8rem; }
+
+  /* ===== Filters ===== */
+  .filter-row{display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:18px;}
+  .filter-field label{display:block; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); margin-bottom:5px; font-weight:600;}
+  .filter-field select, .filter-field input{border:1px solid var(--line); border-radius:7px; padding:8px 10px; font-family:inherit; font-size:.88rem; background:#fff; color:var(--ink);}
+  .chip-group{display:flex; gap:6px; flex-wrap:wrap;}
+  .chip{border:1px solid var(--line); background:#fff; border-radius:999px; padding:6px 13px; font-size:.8rem; font-weight:600; color:var(--ink-soft);}
+  .chip.active{ background:var(--moss-pale); border-color:var(--moss); color:var(--fern-dark); }
+
+  /* ===== Table ===== */
+  .table-scroll{overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 -4px;}
+  table{width:100%; min-width:640px; border-collapse:collapse; font-size:.88rem;}
+  thead th{
+    text-align:left; font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft);
+    border-bottom:2px solid var(--line); padding:8px 10px; white-space:nowrap;
+  }
+  /* ── Sort indicators ── */
+  thead th[data-sort]{ cursor:pointer; user-select:none; }
+  thead th[data-sort]:hover{ color:var(--fern-dark); }
+  thead th[data-sort]::after{ content:' \2195'; font-size:.7em; opacity:.3; }
+  thead th[data-sort].sort-asc::after{ content:' \2191'; opacity:1; color:var(--fern); }
+  thead th[data-sort].sort-desc::after{ content:' \2193'; opacity:1; color:var(--fern); }
+
+  tbody td{ padding:11px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  tbody tr:hover{ background:var(--moss-pale); cursor:pointer; }
+  .rpro{ font-family:var(--font-mono); font-weight:600; color:var(--fern-dark); font-size:.85rem; }
+
+  .badge{ display:inline-block; padding:3px 10px; border-radius:999px; font-size:.72rem; font-weight:700; letter-spacing:.02em; }
+  .badge-overdue{ background:var(--overdue-bg); color:var(--overdue); }
+  .badge-due{ background:var(--due-bg); color:var(--due); }
+  .badge-ontrack{ background:var(--ontrack-bg); color:var(--ontrack); }
+  .badge-callout{ background:var(--callout-bg); color:var(--callout-color); }
+  .badge-phase{ background:var(--moss-pale); color:var(--fern-dark); font-family:var(--font-mono); }
+
+  /* ===== Print notes rows (hidden on screen, visible when printing) ===== */
+  .print-notes-row{ display:none; }
+
+  /* ===== Modal ===== */
+  .modal-backdrop{display:none; position:fixed; inset:0; background:rgba(35,42,32,.45); z-index:100; align-items:flex-start; justify-content:center; padding:40px 16px; overflow-y:auto;}
+  .modal-backdrop.open{ display:flex; }
+  .modal{background:var(--paper-raised); border-radius:14px; max-width:640px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,.25); padding:28px;}
+  .modal-head{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px;}
+  .modal-close{background:none; border:none; font-size:1.3rem; color:var(--ink-soft); line-height:1;}
+  .field{margin-bottom:16px;}
+  .field label{display:block; font-size:.78rem; font-weight:700; color:var(--fern-dark); margin-bottom:5px;}
+  .field-hint{font-size:.76rem; color:var(--ink-soft); margin-top:4px;}
+  .field input, .field select, .field textarea{width:100%; border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-family:inherit; font-size:.9rem; background:#fff;}
+  .field textarea{ min-height:80px; resize:vertical; }
+  .field-row{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .status-options{display:flex; gap:8px; flex-wrap:wrap;}
+  .status-opt{border:1.5px solid var(--line); border-radius:8px; padding:8px 14px; font-size:.85rem; font-weight:600; background:#fff; color:var(--ink-soft);}
+  .status-opt[data-tag="elevate"].sel{ background:var(--ontrack-bg); border-color:var(--ontrack); color:var(--ontrack); }
+  .status-opt[data-tag="drop"].sel{ background:var(--overdue-bg); border-color:var(--overdue); color:var(--overdue); }
+  .status-opt[data-tag="callout"].sel{ background:var(--callout-bg); border-color:var(--callout-color); color:var(--callout-color); }
+  .status-opt[data-tag="normal"].sel{ background:var(--moss-pale); border-color:var(--moss); color:var(--fern-dark); }
+  .quickcodes{display:flex; gap:6px; margin-top:6px;}
+  /* ── 5-slot auto-fill photo grid ── */
+  .photo-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(90px,1fr)); gap:8px; margin-top:8px;}
+  .photo-slot{aspect-ratio:1; border:1.5px dashed var(--line); border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:.68rem; color:var(--ink-soft); text-align:center; padding:6px; gap:4px; background:#fff;}
+  .photo-slot span.icon{font-size:1.2rem;}
+  .modal-actions{display:flex; justify-content:flex-end; gap:10px; margin-top:22px;}
+
+  /* ===== Item timeline ===== */
+  .item-header{display:flex; justify-content:space-between; flex-wrap:wrap; gap:16px; margin-bottom:6px;}
+  .item-meta{display:flex; flex-wrap:wrap; gap:18px; margin:14px 0 6px; font-size:.85rem; color:var(--ink-soft);}
+  .item-meta b{color:var(--ink); font-weight:600;}
+  /* Crop time inline input */
+  .crop-time-input{width:52px; border:1px solid var(--line); border-radius:5px; padding:2px 6px; font-family:var(--font-mono); font-size:.85rem; background:#fff; text-align:center; -moz-appearance:textfield;}
+  .crop-time-input::-webkit-outer-spin-button,.crop-time-input::-webkit-inner-spin-button{-webkit-appearance:none; margin:0;}
+  .timeline{position:relative; margin-top:26px; padding-left:28px;}
+  .timeline::before{content:''; position:absolute; left:8px; top:6px; bottom:6px; width:2px; background:var(--line);}
+  .tl-node{position:relative; margin-bottom:22px;}
+  .tl-node::before{content:''; position:absolute; left:-28px; top:4px; width:14px; height:14px; border-radius:50%; background:var(--paper-raised); border:3px solid var(--moss);}
+  .tl-node.status-elevate::before{ border-color:var(--ontrack); }
+  .tl-node.status-drop::before{ border-color:var(--overdue); }
+  .tl-node.status-callout::before{ border-color:var(--callout-color); }
+  .tl-node.pending::before{ border-color:var(--due); border-style:dashed; }
+  .tl-card{background:#fff; border:1px solid var(--line); border-radius:10px; padding:14px 16px;}
+  .tl-week{font-family:var(--font-mono); font-weight:600; color:var(--fern-dark); font-size:.85rem;}
+  .tl-comment{margin-top:6px; font-size:.9rem;}
+  .tl-photos{display:flex; gap:6px; margin-top:10px;}
+  .tl-photo{width:52px; height:52px; border-radius:6px; background:var(--moss-pale); display:flex; align-items:center; justify-content:center; font-size:1.1rem;}
+
+  /* ===== Search box ===== */
+  .search-box{position:relative; max-width:420px;}
+  .search-box input{width:100%; padding:10px 14px; border:1px solid var(--line); border-radius:8px; font-size:.9rem;}
+
+  .empty-state{text-align:center; padding:50px 20px; color:var(--ink-soft);}
+  .empty-state .icon{font-size:2rem; margin-bottom:10px;}
+  .coming-soon{border:1.5px dashed var(--line); border-radius:var(--radius); padding:30px; text-align:center; color:var(--ink-soft); background:rgba(255,255,255,.4);}
+  /* footer.mockup-note hidden now that we're live */
+  footer.mockup-note{ display:none; }
+
+  /* ===== Login screen ===== */
+  #loginScreen{
+    display:none; position:fixed; inset:0; background:var(--paper);
+    align-items:center; justify-content:center; z-index:2000; flex-direction:column;
+  }
+  .login-box{
+    background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:36px 40px; width:100%; max-width:400px;
+  }
+  .login-brand{ font-family:var(--font-display); font-size:1.4rem; font-weight:700; color:var(--fern-dark); margin-bottom:4px; }
+  .login-sub  { font-size:.85rem; color:var(--ink-soft); margin-bottom:28px; }
+  .login-error{ font-size:.8rem; color:var(--overdue); margin-top:8px; min-height:18px; }
+  .login-btn  { width:100%; background:var(--fern); border:none; color:#fff; font-family:var(--font-body);
+                font-size:.95rem; font-weight:600; padding:12px; border-radius:8px; cursor:pointer; margin-top:10px; }
+  .login-btn:hover{ background:var(--fern-dark); }
+  .login-btn:disabled{ opacity:.6; cursor:not-allowed; }
+
+  /* ===== Toast ===== */
+  #toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:var(--fern-dark); color:#fff; font-size:.82rem; font-weight:600;
+    padding:9px 20px; border-radius:999px; z-index:500; opacity:0;
+    transition:opacity .25s; pointer-events:none; white-space:nowrap;
+  }
+  #toast.show{ opacity:1; }
+
+  /* ===== Live badge ===== */
+  .live-badge{
+    font-size:.68rem; font-weight:700; background:var(--ontrack-bg); color:var(--ontrack);
+    border:1px solid var(--ontrack); border-radius:999px; padding:2px 8px; margin-left:6px;
+    letter-spacing:.04em; vertical-align:middle;
+  }
+
+  /* ===== Print ===== */
+  @media print{
+    header.ribbon, .no-print, footer.mockup-note{ display:none !important; }
+    body{ background:#fff; }
+    main{ max-width:100%; padding:0; margin:0; }
+    .panel{ box-shadow:none; border:none; padding:0; }
+    .table-scroll{ overflow:visible; margin:0; }
+    table{ font-size:12px; min-width:0; }
+
+    /* ── Print notes rows — blank space for handwritten field notes ── */
+    .print-notes-row{ display:table-row !important; }
+    .print-notes-row td{
+      padding:4px 10px 6px;
+      border-bottom:2px solid #bbb;
+      vertical-align:top;
+    }
+    .notes-label{
+      font-size:.62rem; color:#999; text-transform:uppercase;
+      letter-spacing:.06em; margin-bottom:3px;
+    }
+    .notes-line{
+      border-bottom:1px solid #ccc; height:19px; margin:2px 0;
+    }
+    /* Hide sort arrows in print */
+    thead th::after{ display:none !important; }
+    /* Don't print the Crop Time column (not relevant on a follow-up sheet) */
+    .col-crop-time{ display:none !important; }
+  }
+
+  @media (max-width:720px){
+    .brand span.text{display:none;}
+    nav.tabs{gap:0;}
+    nav.tabs button{padding:10px 10px; font-size:.82rem;}
+    .field-row{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="loginScreen" style="display:none; position:fixed; inset:0; background:var(--paper); align-items:center; justify-content:center; z-index:2000; flex-direction:column;">
+  <div style="background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:36px 40px; width:100%; max-width:400px;">
+    <div style="font-family:var(--font-display); font-size:1.4rem; font-weight:700; color:var(--fern-dark); margin-bottom:4px;">&#127807; R&amp;D Trial Tracker</div>
+    <div style="font-size:.85rem; color:var(--ink-soft); margin-bottom:28px;">The Plant Company &mdash; R&amp;D Team</div>
+    <div class="field"><label>Email</label><input type="email" id="loginEmail" placeholder="you@theplantcompany.com" autocomplete="email"></div>
+    <div class="field"><label>Password</label><input type="password" id="loginPassword" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="current-password"></div>
+    <div id="loginError" style="font-size:.8rem; color:var(--overdue); margin-top:6px; min-height:18px;"></div>
+    <button id="loginBtn" onclick="signIn()" style="width:100%; background:var(--fern); border:none; color:#fff; font-family:var(--font-body); font-size:.95rem; font-weight:600; padding:12px; border-radius:8px; cursor:pointer; margin-top:10px;">Sign in</button>
+  </div>
+</div>
+
+<!-- Toast notification -->
+<div id="toast" style="position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--fern-dark); color:#fff; font-size:.82rem; font-weight:600; padding:9px 20px; border-radius:999px; z-index:500; opacity:0; transition:opacity .25s; pointer-events:none; white-space:nowrap;"></div>
+
+<header class="ribbon">
+  <div class="brand"><span class="leaf">&#127807;</span><span class="text">R&amp;D Trial Tracker</span></div>
+  <nav class="tabs">
+    <button class="tab-btn active" data-view="dashboard">Dashboard</button>
+    <button class="tab-btn" data-view="followups">Follow Ups</button>
+    <button class="tab-btn" data-view="items">Items</button>
+    <button class="tab-btn" data-view="batches">Batches</button>
+    <button class="tab-btn" data-view="reports">Reports</button>
+  </nav>
+  <div class="ribbon-user no-print" id="ribbonUser">
+    <span id="ribbonUserName"></span>
+    <button onclick="signOut()" style="background:none; border:1px solid rgba(201,207,192,.4); color:#C9CFC0; font-family:var(--font-body); font-size:.75rem; padding:3px 10px; border-radius:6px; cursor:pointer; margin-left:10px;">Sign out</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= DASHBOARD ================= -->
+  <section id="view-dashboard" class="view active">
+    <h1>This week at a glance</h1>
+    <p style="color:var(--ink-soft); margin-top:-8px;">Week <span class="mono" id="dashCurrentWeek"></span> &middot; all phases</p>
+
+    <div class="stat-grid">
+      <div class="stat-card due"><div class="num" id="statDueThisWeek">-</div><div class="label">Due this week</div></div>
+      <div class="stat-card warn"><div class="num" id="statOverdue">-</div><div class="label">Overdue follow-ups</div></div>
+      <div class="stat-card"><div class="num" id="statActiveBatches">-</div><div class="label">Active batches</div></div>
+      <div class="stat-card"><div class="num" id="statElevate">-</div><div class="label">Flagged &ldquo;elevate&rdquo;</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Needs attention this week</h2>
+        <button class="btn btn-primary btn-sm" data-nav="followups">Work follow-ups &rarr;</button>
+      </div>
+      <p style="font-size:.82rem; color:var(--ink-soft); margin-bottom:14px;">
+        Use the <strong>Follow Ups</strong> tab to filter by Vendor, Pot Size, or Location and work the full list.
+        Showing the 5 most urgent below.
+      </p>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Batch Number</th><th>Variety</th><th>Phase</th><th>Vendor</th><th>Qty</th><th>Location</th><th>Follow-up</th></tr></thead>
+        <tbody id="dashDueTableBody"></tbody>
+      </table></div>
+      <div id="dashMoreRow" style="display:none; text-align:center; padding:10px; font-size:.82rem; color:var(--ink-soft); border-top:1px solid var(--line);">
+        <a href="#" data-nav="followups" style="color:var(--fern); font-weight:600;"></a>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Batches by phase</h2></div>
+      <div id="dashPhaseBreakdown" class="stat-grid"></div>
+    </div>
+  </section>
+
+  <!-- ================= FOLLOW UPS ================= -->
+  <section id="view-followups" class="view">
+    <h1>Follow Ups</h1>
+    <p style="color:var(--ink-soft); margin-top:-8px;">Select a phase and week, then work the list. Print it to take into the greenhouse.</p>
+
+    <div class="panel no-print">
+      <div class="filter-row">
+        <div class="filter-field">
+          <label>Phase</label>
+          <div class="chip-group" id="phaseChipGroup"></div>
+        </div>
+        <div class="filter-field">
+          <label>Week</label>
+          <select id="weekFilter"></select>
+        </div>
+        <div class="filter-field">
+          <label>Status</label>
+          <select id="statusFilter">
+            <option value="all">All</option>
+            <option value="pending" selected>Not yet completed</option>
+            <option value="overdue">Overdue only</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label>Vendor</label>
+          <select id="vendorFilter"><option value="all">All Vendors</option></select>
+        </div>
+        <div class="filter-field">
+          <label>Pot Size</label>
+          <select id="potSizeFilter"><option value="all">All Pot Sizes</option></select>
+        </div>
+        <div class="filter-field">
+          <label>Location</label>
+          <select id="locationFilter"><option value="all">All Locations</option></select>
+        </div>
+        <div style="margin-left:auto; display:flex; gap:8px; align-items:flex-end;">
+          <button class="btn btn-ghost btn-sm" onclick="clearFollowUpFilters()">Clear filters</button>
+          <button class="btn" onclick="window.print()">&#128424; Print list</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="printHeader" style="display:none;">
+      <h2 style="margin-bottom:2px;">Follow-Up Sheet</h2>
+      <p class="mono" style="color:var(--ink-soft); margin:0;" id="printSubtitle"></p>
+    </div>
+
+    <div class="panel">
+      <div class="table-scroll"><table id="followupsTable">
+        <thead>
+          <tr>
+            <th data-sort="startWeek">Start Wk</th>
+            <th data-sort="rpro">Batch Number</th>
+            <th data-sort="desc">Variety</th>
+            <th data-sort="vendor">Vendor</th>
+            <th data-sort="qty">Qty</th>
+            <th data-sort="location">Location</th>
+            <th data-sort="week">Follow-up</th>
+            <th class="no-print">Status</th>
+            <th class="no-print"></th>
+          </tr>
+        </thead>
+        <tbody id="followupsTableBody"></tbody>
+      </table></div>
+      <div class="empty-state" id="followupsEmpty" style="display:none;">
+        <div class="icon">&#127793;</div>
+        Nothing matches these filters &mdash; try a different week or phase.
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ITEMS ================= -->
+  <section id="view-items" class="view">
+    <h1>Items</h1>
+    <p style="color:var(--ink-soft); margin-top:-8px;">Look up a batch to see its full history &mdash; phase changes, comments, and photos over time.</p>
+
+    <div class="panel">
+      <div class="search-box">
+        <input type="text" id="itemSearch" placeholder="Search by Batch Number, variety, or Aster Code&hellip;">
+      </div>
+      <div id="itemSearchResults" style="margin-top:14px;"></div>
+    </div>
+
+    <div id="itemDetail"></div>
+  </section>
+
+  <!-- ================= BATCHES ================= -->
+  <section id="view-batches" class="view">
+    <div class="panel-head" style="margin-bottom:18px;">
+      <h1 style="margin:0;">Batches</h1>
+      <button class="btn btn-primary" onclick="openAddBatchModal()">+ Add Batch</button>
+    </div>
+
+    <div class="panel">
+      <div class="filter-row">
+        <div class="filter-field">
+          <label>Phase</label>
+          <select id="batchPhaseFilter"><option value="all">All phases</option></select>
+        </div>
+        <div class="filter-field" style="flex:1; min-width:200px;">
+          <label>Search</label>
+          <input type="text" id="batchSearch" placeholder="Variety, Batch Number, vendor&hellip;" style="width:100%;">
+        </div>
+      </div>
+      <div class="table-scroll"><table id="batchesTable">
+        <thead>
+          <tr>
+            <th data-sort="rpro">Batch Number</th>
+            <th data-sort="item">Aster Code</th>
+            <th data-sort="desc">Description</th>
+            <th data-sort="vendor">Vendor</th>
+            <th data-sort="phase">Phase</th>
+            <th>Pot / PPP</th>
+            <th data-sort="qty">Qty</th>
+            <th data-sort="startWeek">Start Wk</th>
+            <th data-sort="location">Location</th>
+            <th data-sort="actualCropTimeWeeks" class="col-crop-time" title="Actual weeks from start to finish">Crop Time</th>
+          </tr>
+        </thead>
+        <tbody id="batchesTableBody"></tbody>
+      </table></div>
+      <div class="empty-state" id="batchesEmpty" style="display:none;">
+        <div class="icon">&#128269;</div>
+        No batches match &mdash; try a different search or phase.
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= REPORTS ================= -->
+  <section id="view-reports" class="view">
+    <h1>Reports</h1>
+    <p style="color:var(--ink-soft); margin-top:-8px;">Generate documents to share inside and outside the team.</p>
+    <div class="stat-grid" style="margin-top:20px;">
+      <div class="panel coming-soon"><h3>Weekly Summary</h3><p>By start week or follow-up week &mdash; counts, quantities, and elevate/drop/callout lists.<br><em>Coming in v2</em></p></div>
+      <div class="panel coming-soon"><h3>Trial Progress Report</h3><p>Notes and photos across the growth cycle for selected batches, shareable mid-trial.<br><em>Coming in v2</em></p></div>
+      <div class="panel coming-soon"><h3>Final Trial Report</h3><p>Final results, recommended spec, and program &mdash; the trial's closing summary.<br><em>Coming in v2</em></p></div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ================= FOLLOW-UP ENTRY MODAL ================= -->
+<div class="modal-backdrop no-print" id="followupModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3 id="fuModalTitle" style="margin-bottom:2px;">Follow Up</h3>
+        <p class="mono" style="margin:0; color:var(--ink-soft); font-size:.85rem;" id="fuModalSubtitle"></p>
+      </div>
+      <button class="modal-close" onclick="closeModal('followupModal')">&times;</button>
+    </div>
+
+    <div class="field">
+      <label>Status</label>
+      <div class="status-options" id="statusOptions">
+        <button type="button" class="status-opt" data-tag="normal">On track</button>
+        <button type="button" class="status-opt" data-tag="elevate">Elevate</button>
+        <button type="button" class="status-opt" data-tag="drop">Drop</button>
+        <button type="button" class="status-opt" data-tag="callout">Callout</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Comments / observations</label>
+      <textarea id="fuComments" placeholder="General health status of the batch&hellip;"></textarea>
+      <div class="quickcodes">
+        <button type="button" class="chip btn-sm" onclick="insertQuickCode('BNF')">BNF</button>
+        <button type="button" class="chip btn-sm" onclick="insertQuickCode('NFU')">NFU</button>
+        <button type="button" class="chip btn-sm" onclick="insertQuickCode('chamber')">chamber</button>
+      </div>
+      <div class="field-hint">Always fill this in, even if the batch wasn't found or the follow-up isn't a priority right now.</div>
+    </div>
+
+    <div class="field">
+      <label>Photos</label>
+      <div class="photo-grid">
+        <label class="photo-slot"><span class="icon">&#127991;</span>Tag<input type="file" accept="image/*" capture style="display:none;"></label>
+        <label class="photo-slot"><span class="icon">&#127796;</span>Overhead &ndash; batch<input type="file" accept="image/*" capture style="display:none;"></label>
+        <label class="photo-slot"><span class="icon">&#127807;</span>Profile &ndash; plant<input type="file" accept="image/*" capture style="display:none;"></label>
+        <label class="photo-slot"><span class="icon">&#127807;</span>Overhead &ndash; plant<input type="file" accept="image/*" capture style="display:none;"></label>
+        <label class="photo-slot"><span class="icon">&#128247;</span>Additional<input type="file" accept="image/*" capture style="display:none;"></label>
+      </div>
+      <div class="field-hint">4 required types + 1 additional slot for anything else (pest, damage, label, etc.). Wired to Supabase Storage once live &mdash; UI only for now.</div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('followupModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveFollowup()">Save follow-up</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ADD BATCH MODAL ================= -->
+<div class="modal-backdrop no-print" id="addBatchModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 style="margin:0;">Add Batch</h3>
+      <button class="modal-close" onclick="closeModal('addBatchModal')">&times;</button>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Batch Number</label><input id="addBatchRpro" type="text" placeholder="RPRO-28104"></div>
+      <div class="field"><label>Aster Code</label><input id="addBatchItem" type="text" placeholder="FP-1072 or YP-2234"></div>
+    </div>
+    <div class="field"><label>Description</label><input id="addBatchDesc" type="text" placeholder="Genus species Variety-size"></div>
+    <div class="field-row">
+      <div class="field"><label>Vendor</label><input id="addBatchVendor" type="text" placeholder="Grow4U"></div>
+      <div class="field">
+        <label>Phase</label>
+        <select id="addBatchPhase">
+          <option>P1-NEW</option><option>P1-VENDOR</option><option>P2</option>
+          <option>P3</option><option>P4</option><option>P5</option><option>PROG</option>
+        </select>
+      </div>
+    </div>
+    <div class="field" id="progNotesField" style="display:none;">
+      <label>Program trial purpose</label>
+      <textarea id="addBatchProgNotes" placeholder="What's being evaluated in this program trial?"></textarea>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Pot Size</label><input id="addBatchPotSize" type="text" placeholder="12cm"></div>
+      <div class="field"><label>Plants Per Pot</label><input id="addBatchPpp" type="text" placeholder="2PP"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Quantity</label><input id="addBatchQty" type="number" placeholder="344" min="1"></div>
+      <div class="field"><label>Start Week</label><input id="addBatchStartWeek" type="number" placeholder="42" min="1" max="53"></div>
+    </div>
+    <div class="field"><label>Set-Down Location</label><input id="addBatchLocation" type="text" placeholder="A2-3"></div>
+    <div class="field-hint" style="margin-bottom:14px;">
+      Saving adds this batch to the mock data and generates a 2/4/6/8/10/12-week follow-up schedule locally.
+      When connected to Supabase, the database trigger handles scheduling automatically.
+      <br>Actual crop time is recorded later, on the batch detail page, once the trial is complete.
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('addBatchModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveNewBatch()">Add batch</button>
+    </div>
+  </div>
+</div>
+
+<footer class="mockup-note no-print">UI mockup &middot; sample data only &middot; not yet connected to a database</footer>
+
+<script>
+/* ============================================================
+   SUPABASE CLIENT
+============================================================ */
+const SUPABASE_URL = 'https://yskkqhllcmsnvaeomvqi.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_0AxNSplGe2GUQPzY49H3xA_jGx7yf3Y';
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ============================================================
+   AUTH
+============================================================ */
+async function signIn(){
+  const email    = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl    = document.getElementById('loginError');
+  const btn      = document.getElementById('loginBtn');
+  errEl.textContent = '';
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  const { error } = await db.auth.signInWithPassword({ email, password });
+  btn.disabled = false; btn.textContent = 'Sign in';
+  if(error){ errEl.textContent = error.message; return; }
+  // onAuthStateChange picks it up from here
+}
+async function signOut(){
+  await db.auth.signOut();
+}
+function showLogin(){
+  const ls = document.getElementById('loginScreen');
+  ls.style.display = 'flex';
+  setTimeout(() => document.getElementById('loginEmail').focus(), 50);
+}
+function hideLogin(){
+  document.getElementById('loginScreen').style.display = 'none';
+}
+
+/* ============================================================
+   TOAST
+============================================================ */
+let toastTimer;
+function showToast(msg, duration=3000){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.opacity = '1';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.opacity = '0'; }, duration);
+}
+
+/* ============================================================
+   SECURITY — HTML escape helper.
+   Every user-supplied string goes through esc() before innerHTML.
+============================================================ */
+function esc(s){
+  const d = document.createElement('div');
+  d.textContent = s ?? '';
+  return d.innerHTML;
+}
+
+/* ============================================================
+   DATE HELPERS — ISO 8601, derived at runtime.
+============================================================ */
+function getISOWeek(date){
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+function getISOYear(date){
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  return d.getUTCFullYear();
+}
+const CURRENT_WEEK = getISOWeek(new Date());
+const CURRENT_YEAR = getISOYear(new Date());
+const PHASES = ["P1-NEW","P1-VENDOR","P2","P3","P4","P5","PROG"];
+const FOLLOW_INTERVALS = [2, 4, 6, 8, 10, 12];
+
+/* ============================================================
+   SORT HELPERS
+   sortRows() — generic sort over any array.
+   updateSortHeaders() — syncs ▲▼ indicators to current state.
+   Supabase cutover: replace sortRows() with ORDER BY in queries.
+============================================================ */
+function sortRows(arr, sort, getKey){
+  if(!sort.col) return arr;
+  return [...arr].sort((a, b) => {
+    const vA = getKey(a, sort.col);
+    const vB = getKey(b, sort.col);
+    if(vA == null && vB == null) return 0;
+    if(vA == null) return 1;   // nulls always last
+    if(vB == null) return -1;
+    const cmp = (typeof vA === 'number' && typeof vB === 'number')
+      ? vA - vB
+      : String(vA).localeCompare(String(vB), undefined, {sensitivity:'base'});
+    return sort.dir === 'asc' ? cmp : -cmp;
+  });
+}
+function updateSortHeaders(tableEl, sort){
+  tableEl.querySelectorAll('thead th[data-sort]').forEach(th => {
+    th.classList.remove('sort-asc','sort-desc');
+    if(th.dataset.sort === sort.col)
+      th.classList.add(sort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+  });
+}
+
+let followupSort = { col:'week', dir:'asc' };
+let batchSort    = { col:null,   dir:'asc' };
+
+function followupKey(f, col){
+  const b = batchById(f.batchId);
+  switch(col){
+    case 'startWeek': return b?.startWeek ?? 0;
+    case 'rpro':      return b?.rpro ?? '';
+    case 'desc':      return b?.desc ?? '';
+    case 'vendor':    return b?.vendor ?? '';
+    case 'qty':       return b?.qty ?? 0;
+    case 'location':  return b?.location ?? '';
+    default:          return f.week;
+  }
+}
+function batchKey(b, col){
+  switch(col){
+    case 'rpro':               return b.rpro ?? '';
+    case 'item':               return b.item ?? '';
+    case 'desc':               return b.desc ?? '';
+    case 'vendor':             return b.vendor ?? '';
+    case 'phase':              return b.phase ?? '';
+    case 'qty':                return b.qty ?? 0;
+    case 'startWeek':          return b.startWeek ?? 0;
+    case 'location':           return b.location ?? '';
+    case 'actualCropTimeWeeks': return b.actualCropTimeWeeks; // null → last
+    default:                   return b.rpro ?? '';
+  }
+}
+
+/* ============================================================
+   DATA ADAPTERS — map Supabase snake_case rows to camelCase UI objects.
+   These are the ONLY functions that need to change if the DB schema evolves.
+============================================================ */
+function toUIBatch(row){
+  return {
+    id:                  row.id,
+    rpro:                row.rpro_number,
+    item:                row.item_number,
+    desc:                row.description,
+    vendor:              row.vendor         ?? '',
+    phase:               row.phase,
+    potSize:             row.pot_size        ?? '',
+    ppp:                 row.plants_per_pot  ?? '',
+    qty:                 row.quantity,
+    startWeek:           row.start_week,
+    startYear:           row.start_year,
+    location:            row.set_down_location ?? '',
+    progNotes:           row.program_trial_notes ?? '',
+    actualCropTimeWeeks: row.actual_crop_time_weeks ?? null,
+    trialType:           row.trial_type,
+    testingStatus:       row.testing_status,
+    routingNumber:       row.routing_number  ?? '',
+  };
+}
+function toUIFollowup(row){
+  const status = row.completed_at
+    ? 'completed'
+    : (row.scheduled_year < CURRENT_YEAR ||
+       (row.scheduled_year === CURRENT_YEAR && row.scheduled_week < CURRENT_WEEK))
+      ? 'overdue'
+      : 'pending';
+  return {
+    id:            row.id,
+    batchId:       row.batch_id,
+    interval:      row.interval_weeks,
+    week:          row.scheduled_week,
+    scheduledYear: row.scheduled_year,
+    tag:           row.status_tag ?? null,
+    comment:       row.comments   ?? '',
+    status,
+  };
+}
+
+/* ============================================================
+   DATA — live arrays populated by loadData()
+============================================================ */
+let BATCHES   = [];
+let FOLLOWUPS = [];
+
+async function loadData(){
+  const [{ data: batches, error: be }, { data: followups, error: fe }] = await Promise.all([
+    db.from('trial_batches').select('*').order('start_year', {ascending:false}).order('start_week', {ascending:false}),
+    db.from('follow_ups').select('*').order('scheduled_year').order('scheduled_week'),
+  ]);
+  if(be){ showToast('Error loading batches: ' + be.message); return false; }
+  if(fe){ showToast('Error loading follow-ups: ' + fe.message); return false; }
+  BATCHES   = (batches   || []).map(toUIBatch);
+  FOLLOWUPS = (followups || []).map(toUIFollowup);
+  return true;
+}
+
+/* ============================================================
+   REALTIME — re-render on any change from any user.
+   Guard prevents double-subscription when onAuthStateChange
+   fires alongside the initial getSession() check.
+============================================================ */
+let _realtimeReady = false;
+
+function setupRealtime(){
+  if(_realtimeReady) return;
+  _realtimeReady = true;
+  db.channel('rd-tracker-live')
+    .on('postgres_changes', { event:'*', schema:'public', table:'trial_batches' }, async () => {
+      await loadData();
+      populateWeekFilter();
+      populateFollowUpFilters();
+      renderView(activeView);
+      showToast('Data updated');
+    })
+    .on('postgres_changes', { event:'*', schema:'public', table:'follow_ups' }, async () => {
+      await loadData();
+      renderView(activeView);
+      showToast('Data updated');
+    })
+    .subscribe();
+}
+
+function batchById(id){ return BATCHES.find(b => b.id === id) ?? null; }
+function followupsForBatch(id){ return FOLLOWUPS.filter(f => f.batchId === id).sort((a,b) => a.interval - b.interval); }
+
+/* ============================================================
+   NAV
+============================================================ */
+function switchView(name){
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelector(`.tab-btn[data-view="${name}"]`).classList.add('active');
+}
+document.querySelectorAll('.tab-btn').forEach(btn =>
+  btn.addEventListener('click', () => switchView(btn.dataset.view)));
+document.addEventListener('click', e => {
+  const btn = e.target.closest('[data-nav]');
+  if(btn) switchView(btn.dataset.nav);
+});
+
+/* ============================================================
+   DASHBOARD
+============================================================ */
+function renderDashboard(){
+  document.getElementById('dashCurrentWeek').textContent = CURRENT_WEEK;
+
+  const dueThisWeek = FOLLOWUPS.filter(f => f.status !== 'completed' && f.week === CURRENT_WEEK && f.scheduledYear === CURRENT_YEAR);
+  const overdue     = FOLLOWUPS.filter(f => f.status === 'overdue');
+  const elevate     = FOLLOWUPS.filter(f => f.tag === 'elevate').length;
+
+  document.getElementById('statDueThisWeek').textContent  = dueThisWeek.length;
+  document.getElementById('statOverdue').textContent      = overdue.length;
+  document.getElementById('statActiveBatches').textContent = BATCHES.length;
+  document.getElementById('statElevate').textContent      = elevate;
+
+  const attention = [...dueThisWeek, ...overdue];
+  const shown     = attention.slice(0, 5);
+  const more      = attention.length - shown.length;
+  const tbody     = document.getElementById('dashDueTableBody');
+  const moreRow   = document.getElementById('dashMoreRow');
+
+  if(!shown.length){
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--ink-soft); padding:24px;">Nothing due — all caught up.</td></tr>';
+    moreRow.style.display = 'none';
+  } else {
+    tbody.innerHTML = shown.map(f => {
+      const b = batchById(f.batchId);
+      if(!b) return '';
+      return `<tr data-batch-id="${esc(b.id)}" data-interval="${f.interval}" style="cursor:pointer;">
+        <td class="rpro">${esc(b.rpro)}</td><td>${esc(b.desc)}</td>
+        <td><span class="badge badge-phase">${esc(b.phase)}</span></td>
+        <td>${esc(b.vendor)}</td><td>${b.qty}</td><td class="mono">${esc(b.location)}</td>
+        <td>${weekBadge(f)}</td>
+      </tr>`;
+    }).join('');
+    if(more > 0){
+      moreRow.style.display = 'block';
+      moreRow.querySelector('a').textContent = `See all ${attention.length} follow-ups in Follow Ups tab →`;
+    } else {
+      moreRow.style.display = 'none';
+    }
+  }
+
+  const phaseWrap = document.getElementById('dashPhaseBreakdown');
+  phaseWrap.innerHTML = PHASES.map(p => {
+    const count = BATCHES.filter(b => b.phase === p).length;
+    if(!count) return '';
+    return `<div class="stat-card"><div class="num">${count}</div><div class="label">${esc(p)}</div></div>`;
+  }).join('');
+}
+
+document.getElementById('dashDueTableBody').addEventListener('click', e => {
+  const row = e.target.closest('tr[data-batch-id]');
+  if(row) openFollowupModal(row.dataset.batchId, Number(row.dataset.interval));
+});
+
+function weekBadge(f){
+  if(f.status === 'completed') return `<span class="badge badge-ontrack">Wk ${f.week} – done</span>`;
+  if(f.status === 'overdue')   return `<span class="badge badge-overdue">Wk ${f.week} – overdue</span>`;
+  if(f.week === CURRENT_WEEK && f.scheduledYear === CURRENT_YEAR) return `<span class="badge badge-due">Wk ${f.week} – due now</span>`;
+  return `<span class="badge badge-phase">Wk ${f.week}</span>`;
+}
+
+/* ============================================================
+   FOLLOW UPS VIEW
+============================================================ */
+let activePhaseFilters = new Set(PHASES);
+
+function renderPhaseChips(){
+  const wrap = document.getElementById('phaseChipGroup');
+  wrap.innerHTML = PHASES.map(p =>
+    `<button type="button" class="chip active" data-phase="${esc(p)}">${esc(p)}</button>`
+  ).join('');
+  wrap.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const p = chip.dataset.phase;
+      if(activePhaseFilters.has(p)){ activePhaseFilters.delete(p); chip.classList.remove('active'); }
+      else { activePhaseFilters.add(p); chip.classList.add('active'); }
+      renderFollowupsTable();
+    });
+  });
+}
+
+function populateWeekFilter(){
+  const sel   = document.getElementById('weekFilter');
+  const weeks = [...new Set(FOLLOWUPS.map(f => f.week))].sort((a,b) => a-b);
+  sel.innerHTML = `<option value="all">All weeks</option>` +
+    weeks.map(w => `<option value="${w}" ${w===CURRENT_WEEK?'selected':''}>Week ${w}${w===CURRENT_WEEK?' (current)':''}</option>`).join('');
+}
+
+function populateFollowUpFilters(){
+  const vendors  = [...new Set(BATCHES.map(b => b.vendor).filter(Boolean))].sort();
+  const potSizes = [...new Set(BATCHES.map(b => b.potSize).filter(Boolean))].sort();
+  const locs     = [...new Set(BATCHES.map(b => b.location).filter(Boolean))].sort();
+
+  const vSel = document.getElementById('vendorFilter');
+  const pSel = document.getElementById('potSizeFilter');
+  const lSel = document.getElementById('locationFilter');
+  if(!vSel || !pSel || !lSel) return;
+
+  const cur = { v: vSel.value, p: pSel.value, l: lSel.value };
+  vSel.innerHTML = '<option value="all">All Vendors</option>'  + vendors.map(v  => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  pSel.innerHTML = '<option value="all">All Pot Sizes</option>'+ potSizes.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+  lSel.innerHTML = '<option value="all">All Locations</option>'+ locs.map(l    => `<option value="${esc(l)}">${esc(l)}</option>`).join('');
+  vSel.value = cur.v; pSel.value = cur.p; lSel.value = cur.l;
+}
+
+function clearFollowUpFilters(){
+  document.getElementById('vendorFilter').value   = 'all';
+  document.getElementById('potSizeFilter').value  = 'all';
+  document.getElementById('locationFilter').value = 'all';
+  renderFollowupsTable();
+}
+
+function renderFollowupsTable(){
+  const weekVal     = document.getElementById('weekFilter').value;
+  const statusVal   = document.getElementById('statusFilter').value;
+  const vendorVal   = document.getElementById('vendorFilter')?.value   || 'all';
+  const potSizeVal  = document.getElementById('potSizeFilter')?.value  || 'all';
+  const locationVal = document.getElementById('locationFilter')?.value || 'all';
+
+  let rows = FOLLOWUPS.filter(f => {
+    const b = batchById(f.batchId);
+    if(!b) return false;
+    if(!activePhaseFilters.has(b.phase)) return false;
+    if(weekVal    !== 'all' && String(f.week) !== weekVal)  return false;
+    if(vendorVal  !== 'all' && b.vendor   !== vendorVal)    return false;
+    if(potSizeVal !== 'all' && b.potSize  !== potSizeVal)   return false;
+    if(locationVal!== 'all' && b.location !== locationVal)  return false;
+    if(statusVal === 'pending'   && f.status === 'completed') return false;
+    if(statusVal === 'overdue'   && f.status !== 'overdue')   return false;
+    if(statusVal === 'completed' && f.status !== 'completed') return false;
+    return true;
+  });
+
+  rows = sortRows(rows, followupSort, followupKey);
+  updateSortHeaders(document.getElementById('followupsTable'), followupSort);
+
+  const tbody = document.getElementById('followupsTableBody');
+  document.getElementById('followupsEmpty').style.display = rows.length ? 'none' : 'block';
+
+  /* Each data row is followed by a print-only notes row for handwritten field notes */
+  tbody.innerHTML = rows.map(f => {
+    const b = batchById(f.batchId);
+    if(!b) return '';
+    return `<tr>
+      <td class="mono">${b.startWeek}</td>
+      <td class="rpro">${esc(b.rpro)}</td>
+      <td>${esc(b.desc)}${b.progNotes ? `<div style="font-size:.78rem;color:var(--ink-soft);">${esc(b.progNotes)}</div>` : ''}</td>
+      <td>${esc(b.vendor)}</td>
+      <td>${b.qty}</td>
+      <td class="mono">${esc(b.location)}</td>
+      <td>${weekBadge(f)}</td>
+      <td class="no-print">${f.tag ? tagBadge(f.tag) : '<span style="color:var(--ink-soft);">&mdash;</span>'}</td>
+      <td class="no-print">
+        <button class="btn btn-sm" data-batch-id="${esc(b.id)}" data-interval="${f.interval}">
+          ${f.status === 'completed' ? 'Edit' : 'Enter'}
+        </button>
+      </td>
+    </tr>
+    <tr class="print-notes-row">
+      <td colspan="7">
+        <div class="notes-label">Field notes</div>
+        <div class="notes-line"></div>
+        <div class="notes-line"></div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('printSubtitle').textContent =
+    `${weekVal === 'all' ? 'All weeks' : 'Week ' + weekVal} · ${[...activePhaseFilters].join(', ')} · generated ${new Date().toLocaleDateString()}`;
+}
+
+document.getElementById('followupsTableBody').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-batch-id]');
+  if(btn) openFollowupModal(btn.dataset.batchId, Number(btn.dataset.interval));
+});
+
+/* Sort header clicks — Follow Ups */
+document.getElementById('followupsTable').querySelector('thead').addEventListener('click', e => {
+  const th = e.target.closest('th[data-sort]');
+  if(!th) return;
+  const col = th.dataset.sort;
+  followupSort.dir = (followupSort.col === col && followupSort.dir === 'asc') ? 'desc' : 'asc';
+  followupSort.col = col;
+  renderFollowupsTable();
+});
+
+function tagBadge(tag){
+  const map = {elevate:'badge-ontrack', drop:'badge-overdue', callout:'badge-callout', normal:'badge-phase'};
+  return `<span class="badge ${map[tag]||'badge-phase'}">${esc(tag)}</span>`;
+}
+
+document.getElementById('weekFilter').addEventListener('change', renderFollowupsTable);
+document.getElementById('statusFilter').addEventListener('change', renderFollowupsTable);
+document.getElementById('vendorFilter').addEventListener('change', renderFollowupsTable);
+document.getElementById('potSizeFilter').addEventListener('change', renderFollowupsTable);
+document.getElementById('locationFilter').addEventListener('change', renderFollowupsTable);
+window.addEventListener('beforeprint', () => { document.getElementById('printHeader').style.display = 'block'; });
+window.addEventListener('afterprint',  () => { document.getElementById('printHeader').style.display = 'none'; });
+
+/* ============================================================
+   FOLLOW-UP MODAL
+============================================================ */
+let currentFollowup = null;
+
+function openFollowupModal(batchId, interval){
+  const b = batchById(batchId);
+  if(!b){ console.warn('openFollowupModal: batch not found', batchId); return; }
+  const f = FOLLOWUPS.find(x => x.batchId === batchId && x.interval === interval);
+  if(!f){ console.warn('openFollowupModal: follow-up not found', batchId, interval); return; }
+  currentFollowup = f;
+  document.getElementById('fuModalTitle').textContent    = b.desc;
+  document.getElementById('fuModalSubtitle').textContent = `${b.rpro} · ${interval}-week follow-up · Week ${f.week}`;
+  document.getElementById('fuComments').value            = f.comment || '';
+  document.querySelectorAll('.status-opt').forEach(opt =>
+    opt.classList.toggle('sel', opt.dataset.tag === (f.tag || 'normal')));
+  document.getElementById('followupModal').classList.add('open');
+}
+document.querySelectorAll('.status-opt').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('.status-opt').forEach(o => o.classList.remove('sel'));
+    opt.classList.add('sel');
+  });
+});
+function insertQuickCode(code){
+  const ta = document.getElementById('fuComments');
+  ta.value = ta.value ? ta.value + ' ' + code : code;
+}
+async function saveFollowup(){
+  if(!currentFollowup){ closeModal('followupModal'); return; }
+  const comment  = document.getElementById('fuComments').value;
+  const sel      = document.querySelector('.status-opt.sel');
+  const tag      = sel ? sel.dataset.tag : 'normal';
+  const followId = currentFollowup.id;
+
+  closeModal('followupModal');
+  showToast('Saving…');
+
+  const { error } = await db
+    .from('follow_ups')
+    .update({
+      completed_at: new Date().toISOString(),
+      comments:     comment || null,
+      status_tag:   tag === 'normal' ? null : tag,
+    })
+    .eq('id', followId);
+
+  if(error){ showToast('Save failed — ' + error.message); return; }
+  await loadData();
+  renderFollowupsTable();
+  renderDashboard();
+  if(document.getElementById('view-items').classList.contains('active')) renderItemSearch();
+  showToast('Follow-up saved');
+}
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+
+/* ============================================================
+   ITEMS VIEW
+============================================================ */
+function renderItemSearch(){
+  const q    = document.getElementById('itemSearch').value.trim().toLowerCase();
+  const wrap = document.getElementById('itemSearchResults');
+  if(!q){ wrap.innerHTML = ''; document.getElementById('itemDetail').innerHTML = ''; return; }
+  const matches = BATCHES.filter(b =>
+    b.rpro.toLowerCase().includes(q) || b.desc.toLowerCase().includes(q) || b.item.toLowerCase().includes(q)
+  );
+  wrap.innerHTML = matches.map(b =>
+    `<div class="tl-card" style="margin-bottom:8px;cursor:pointer;" data-batch-id="${esc(b.id)}">
+      <span class="rpro">${esc(b.rpro)}</span> &middot; ${esc(b.desc)} &middot;
+      <span class="badge badge-phase">${esc(b.phase)}</span>
+    </div>`
+  ).join('') || '<div class="field-hint">No matches.</div>';
+}
+document.getElementById('itemSearch').addEventListener('input', renderItemSearch);
+document.getElementById('itemSearchResults').addEventListener('click', e => {
+  const card = e.target.closest('[data-batch-id]');
+  if(card) showItemDetail(card.dataset.batchId);
+});
+
+function showItemDetail(batchId){
+  const b = batchById(batchId);
+  if(!b) return;
+  const fups = followupsForBatch(batchId);
+  const wrap = document.getElementById('itemDetail');
+
+  wrap.innerHTML = `
+    <div class="panel">
+      <div class="item-header">
+        <div>
+          <h2 class="mono" style="margin-bottom:2px;">${esc(b.rpro)}</h2>
+          <h3 style="color:var(--ink-soft); font-weight:500;">${esc(b.desc)}</h3>
+        </div>
+        <span class="badge badge-phase" style="font-size:.85rem;">${esc(b.phase)}</span>
+      </div>
+      <div class="item-meta">
+        <div><b>Aster Code</b> ${esc(b.item)}</div>
+        <div><b>Vendor</b> ${esc(b.vendor)}</div>
+        <div><b>Pot / PPP</b> ${esc(b.potSize)} / ${esc(b.ppp)}</div>
+        <div><b>Qty</b> ${b.qty}</div>
+        <div><b>Start Wk</b> ${b.startWeek}</div>
+        <div><b>Location</b> ${esc(b.location)}</div>
+        <div>
+          <b>Crop Time</b>
+          <input
+            type="number"
+            class="crop-time-input"
+            data-action="set-crop-time"
+            data-batch-id="${esc(b.id)}"
+            value="${b.actualCropTimeWeeks ?? ''}"
+            placeholder="—"
+            min="1" max="99"
+            title="Actual weeks from start to finish — enter once the trial is complete">
+          <span style="font-size:.8rem; color:var(--ink-soft);">wks actual</span>
+        </div>
+      </div>
+      ${b.progNotes ? `<div class="field-hint" style="margin-top:10px;"><b>Program trial purpose:</b> ${esc(b.progNotes)}</div>` : ''}
+
+      <h3 style="margin-top:26px;">Follow-up timeline</h3>
+      <div class="timeline">
+        ${fups.map(f => `
+          <div class="tl-node ${f.status==='completed' ? 'status-'+esc(f.tag||'normal') : 'pending'}">
+            <div class="tl-card">
+              <div class="tl-week">${f.interval}-week &middot; Week ${f.week}
+                ${f.status==='completed'
+                  ? tagBadge(f.tag||'normal')
+                  : f.status==='overdue'
+                    ? '<span class="badge badge-overdue">overdue</span>'
+                    : '<span class="badge badge-due">upcoming</span>'}
+              </div>
+              <div class="tl-comment">${f.comment ? esc(f.comment) : '<span style="color:var(--ink-soft);">No comments yet.</span>'}</div>
+              ${f.status==='completed'
+                ? `<div class="tl-photos"><div class="tl-photo">&#127991;</div><div class="tl-photo">&#127796;</div></div>`
+                : `<button class="btn btn-sm" style="margin-top:10px;" data-batch-id="${esc(b.id)}" data-interval="${f.interval}">Enter follow-up</button>`}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+/* Event delegation — item detail (timeline buttons + crop time input) */
+document.getElementById('itemDetail').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-batch-id]');
+  if(btn) openFollowupModal(btn.dataset.batchId, Number(btn.dataset.interval));
+});
+document.getElementById('itemDetail').addEventListener('change', async e => {
+  const input = e.target.closest('input[data-action="set-crop-time"]');
+  if(!input) return;
+  const val       = parseInt(input.value, 10);
+  const cropWeeks = (!isNaN(val) && val > 0) ? val : null;
+  const { error } = await db
+    .from('trial_batches')
+    .update({ actual_crop_time_weeks: cropWeeks })
+    .eq('id', input.dataset.batchId);
+  if(error){ showToast('Error saving crop time'); return; }
+  const b = batchById(input.dataset.batchId);
+  if(b) b.actualCropTimeWeeks = cropWeeks;
+  if(document.getElementById('view-batches').classList.contains('active')) renderBatchesTable();
+  showToast('Crop time saved');
+});
+
+/* ============================================================
+   BATCHES VIEW
+============================================================ */
+function renderBatchesTable(){
+  const phaseVal = document.getElementById('batchPhaseFilter').value;
+  const q        = document.getElementById('batchSearch').value.trim().toLowerCase();
+
+  let rows = BATCHES.filter(b => {
+    if(phaseVal !== 'all' && b.phase !== phaseVal) return false;
+    if(q && !(b.rpro.toLowerCase().includes(q) || b.desc.toLowerCase().includes(q) || b.vendor.toLowerCase().includes(q))) return false;
+    return true;
+  });
+
+  rows = sortRows(rows, batchSort, batchKey);
+  updateSortHeaders(document.getElementById('batchesTable'), batchSort);
+
+  const tbody = document.getElementById('batchesTableBody');
+  document.getElementById('batchesEmpty').style.display = rows.length ? 'none' : 'block';
+
+  tbody.innerHTML = rows.map(b => `
+    <tr data-batch-id="${esc(b.id)}" style="cursor:pointer;">
+      <td class="rpro">${esc(b.rpro)}</td>
+      <td class="mono">${esc(b.item)}</td>
+      <td>${esc(b.desc)}</td>
+      <td>${esc(b.vendor)}</td>
+      <td><span class="badge badge-phase">${esc(b.phase)}</span></td>
+      <td>${esc(b.potSize)} / ${esc(b.ppp)}</td>
+      <td>${b.qty}</td>
+      <td class="mono">${b.startWeek}</td>
+      <td class="mono">${esc(b.location)}</td>
+      <td class="col-crop-time mono" style="color:${b.actualCropTimeWeeks ? 'var(--ink)' : 'var(--ink-soft)'}">
+        ${b.actualCropTimeWeeks != null ? b.actualCropTimeWeeks + ' wks' : '&mdash;'}
+      </td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('batchesTableBody').addEventListener('click', e => {
+  const row = e.target.closest('tr[data-batch-id]');
+  if(!row) return;
+  const b = batchById(row.dataset.batchId);
+  if(!b) return;
+  switchView('items');
+  document.getElementById('itemSearch').value = b.rpro;
+  renderItemSearch();
+  showItemDetail(b.id);
+});
+
+document.getElementById('batchPhaseFilter').addEventListener('change', renderBatchesTable);
+document.getElementById('batchSearch').addEventListener('input', renderBatchesTable);
+
+/* Sort header clicks — Batches */
+document.getElementById('batchesTable').querySelector('thead').addEventListener('click', e => {
+  const th = e.target.closest('th[data-sort]');
+  if(!th) return;
+  const col = th.dataset.sort;
+  batchSort.dir = (batchSort.col === col && batchSort.dir === 'asc') ? 'desc' : 'asc';
+  batchSort.col = col;
+  renderBatchesTable();
+});
+
+function openAddBatchModal(){ document.getElementById('addBatchModal').classList.add('open'); }
+document.getElementById('addBatchPhase').addEventListener('change', e => {
+  document.getElementById('progNotesField').style.display = e.target.value === 'PROG' ? 'block' : 'none';
+});
+
+/* ============================================================
+   ADD BATCH — saves to Supabase; DB trigger auto-creates follow_ups
+============================================================ */
+async function saveNewBatch(){
+  const rpro      = document.getElementById('addBatchRpro').value.trim();
+  const desc      = document.getElementById('addBatchDesc').value.trim();
+  if(!rpro || !desc){ alert('Batch Number and Description are required.'); return; }
+
+  const btn = document.querySelector('#addBatchModal .btn-primary');
+  if(btn){ btn.disabled = true; btn.textContent = 'Saving…'; }
+
+  const { error } = await db.from('trial_batches').insert({
+    rpro_number:          rpro,
+    item_number:          document.getElementById('addBatchItem').value.trim() || 'TBD',
+    description:          desc,
+    vendor:               document.getElementById('addBatchVendor').value.trim() || null,
+    phase:                document.getElementById('addBatchPhase').value,
+    pot_size:             document.getElementById('addBatchPotSize').value.trim()  || null,
+    plants_per_pot:       document.getElementById('addBatchPpp').value.trim()      || null,
+    quantity:             parseInt(document.getElementById('addBatchQty').value, 10) || 0,
+    start_week:           parseInt(document.getElementById('addBatchStartWeek').value, 10) || CURRENT_WEEK,
+    start_year:           CURRENT_YEAR,
+    set_down_location:    document.getElementById('addBatchLocation').value.trim() || null,
+    program_trial_notes:  document.getElementById('addBatchProgNotes').value.trim() || null,
+    trial_type:           'standard',
+  });
+
+  if(btn){ btn.disabled = false; btn.textContent = 'Add batch'; }
+
+  if(error){ showToast('Save failed — ' + error.message); return; }
+
+  ['addBatchRpro','addBatchItem','addBatchDesc','addBatchVendor',
+   'addBatchPotSize','addBatchPpp','addBatchLocation','addBatchProgNotes'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('addBatchQty').value       = '';
+  document.getElementById('addBatchStartWeek').value = '';
+  document.getElementById('addBatchPhase').value     = 'P1-NEW';
+  document.getElementById('progNotesField').style.display = 'none';
+
+  closeModal('addBatchModal');
+  await loadData();
+  populateWeekFilter();
+  renderDashboard();
+  renderFollowupsTable();
+  renderBatchesTable();
+  switchView('batches');
+  showToast('Batch added — follow-ups scheduled automatically');
+}
+
+/* ============================================================
+   INIT
+============================================================ */
+function initUI(){
+  const sel = document.getElementById('batchPhaseFilter');
+  sel.innerHTML = '<option value="all">All phases</option>' +
+    PHASES.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+  renderPhaseChips();
+  populateWeekFilter();
+  populateFollowUpFilters();
+  renderDashboard();
+  renderFollowupsTable();
+  renderBatchesTable();
+}
+
+/* ── Auth-aware startup ── */
+(async function start(){
+  // Check for existing session first
+  const { data: { session } } = await db.auth.getSession();
+
+  if(session){
+    document.getElementById('ribbonUserName').textContent =
+      session.user.email.split('@')[0];
+    const ok = await loadData();
+    if(ok){
+      setupRealtime();
+      initUI();
+    }
+  } else {
+    showLogin();
+  }
+
+  // React to sign-in / sign-out events
+  db.auth.onAuthStateChange(async (event, session) => {
+    if(event === 'SIGNED_IN' && session){
+      hideLogin();
+      document.getElementById('ribbonUserName').textContent =
+        session.user.email.split('@')[0];
+      const ok = await loadData();
+      if(ok){
+        setupRealtime();
+        initUI();
+      }
+    }
+    if(event === 'SIGNED_OUT'){
+      BATCHES = []; FOLLOWUPS = [];
+      showLogin();
+    }
+  });
+
+  // Allow Enter key to submit login
+  document.getElementById('loginPassword').addEventListener('keydown', e => {
+    if(e.key === 'Enter') signIn();
+  });
+})();
+</script>
+</body>
+</html>
